@@ -17,12 +17,11 @@
 using namespace std; 
 
 dpct::constant_memory<int, 2> cHel(64, 6);
-// __constant__ double cmME[6]; value hardcoded now
-// extern __constant__ int cPerm[4];
+dpct::constant_memory<double, 1> cmME(6); // value hardcoded now
+dpct::constant_memory<int, 1> cPerm(4);
 //
 dpct::constant_memory<double, 1> cIPC(6); // coupling ?
 dpct::constant_memory<double, 1> cIPD(2);
-
 
 /////
 
@@ -1831,14 +1830,12 @@ class CPPProcess
 {
  public:
 
- CPPProcess(int numiterations, int gpublocks, int gputhreads, 
-            bool verbose, bool debug): m_numiterations(numiterations), 
+	CPPProcess(int numiterations, int gpublocks, int gputhreads, 
+            bool verbose, bool debug): 
+	m_numiterations(numiterations), 
 		gpu_nblocks(gpublocks), 
 		gpu_nthreads(gputhreads), 
-		dim(gpu_nblocks * gpu_nthreads),
-		cHel("cHel",ncomb,nexternal),
-		cIPC("cIPC",nexternal), 
-		cIPD("cIPD",ninitial),
+		dim(gpu_nblocks * gpu_nthreads)
 			{
 
 
@@ -1873,7 +1870,7 @@ class CPPProcess
 
 	~CPPProcess() = default;
 
-	//const std::vector<double> &CPPProcess::getMasses() const {return mME;}
+	const std::vector<double> &getMasses() const {return mME;}
 	
 	//--------------------------------------------------------------------------
 	// Initialize process.

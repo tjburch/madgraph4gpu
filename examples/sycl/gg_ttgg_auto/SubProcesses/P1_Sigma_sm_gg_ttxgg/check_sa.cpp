@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
   for (int x = 0; x < numiter; ++x) {
     // Get phase space point
     std::vector<std::vector<double *> > p =
-        get_momenta(process.ninitial, energy, process.getMasses(), weight, dim);
+	    get_momenta(process.ninitial, energy, process.getMasses(), weight, dim);
 
     // Set momenta for this event
     for (int d = 0; d < dim; ++d) {
