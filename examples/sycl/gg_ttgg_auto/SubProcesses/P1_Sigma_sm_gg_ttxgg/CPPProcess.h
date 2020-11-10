@@ -30,17 +30,17 @@ void ixxxxx(double pvec[3], double fmass, int nhel, int nsf,
   int ip, im, nh; 
 
   double p[4] = {0, pvec[0], pvec[1], pvec[2]};
-  p[0] = cl::sycl::sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3] + fmass * fmass);
+  p[0] = sycl::sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3] + fmass * fmass);
   fi[0] = std::complex<double>(-p[0] * nsf, -p[3] * nsf);
   fi[1] = std::complex<double>(-p[1] * nsf, -p[2] * nsf);
   nh = nhel * nsf; 
   if (fmass != 0.0)
   {
-    pp = cl::sycl::min(p[0], cl::sycl::sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3]));
+    pp = sycl::min(p[0], sycl::sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3]));
     if (pp == 0.0)
     {
-      sqm[0] = cl::sycl::sqrt(cl::sycl::fabs(fmass));
-      sqm[1] = (fmass < 0) ? -cl::sycl::fabs(sqm[0]) : cl::sycl::fabs(sqm[0]);
+      sqm[0] = sycl::sqrt(sycl::fabs(fmass));
+      sqm[1] = (fmass < 0) ? -sycl::fabs(sqm[0]) : sycl::fabs(sqm[0]);
       ip = (1 + nh)/2; 
       im = (1 - nh)/2; 
       fi[2] = ip * sqm[ip]; 
@@ -52,14 +52,14 @@ void ixxxxx(double pvec[3], double fmass, int nhel, int nsf,
     {
       sf[0] = (1 + nsf + (1 - nsf) * nh) * 0.5; 
       sf[1] = (1 + nsf - (1 - nsf) * nh) * 0.5;
-      omega[0] = cl::sycl::sqrt(p[0] + pp);
+      omega[0] = sycl::sqrt(p[0] + pp);
       omega[1] = fmass/omega[0]; 
       ip = (1 + nh)/2; 
       im = (1 - nh)/2; 
       sfomega[0] = sf[0] * omega[ip]; 
       sfomega[1] = sf[1] * omega[im];
-      pp3 = cl::sycl::max((double)(pp + p[3]), 0.0);
-      chi[0] = std::complex<double>(cl::sycl::sqrt(pp3 * 0.5 / pp), 0);
+      pp3 = sycl::max((double)(pp + p[3]), 0.0);
+      chi[0] = std::complex<double>(sycl::sqrt(pp3 * 0.5 / pp), 0);
       if (pp3 == 0.0)
       {
         chi[1] = std::complex<double>(-nh, 0);
@@ -67,7 +67,7 @@ void ixxxxx(double pvec[3], double fmass, int nhel, int nsf,
       else
       {
         chi[1] =
-            std::complex<double>(nh * p[1], p[2]) / cl::sycl::sqrt(2.0 * pp * pp3);
+            std::complex<double>(nh * p[1], p[2]) / sycl::sqrt(2.0 * pp * pp3);
       }
       fi[2] = sfomega[0] * chi[im]; 
       fi[3] = sfomega[0] * chi[ip]; 
@@ -83,12 +83,12 @@ void ixxxxx(double pvec[3], double fmass, int nhel, int nsf,
     }
     else
     {
-      sqp0p3 = cl::sycl::sqrt(cl::sycl::max((double)(p[0] + p[3]), 0.0)) * nsf;
+      sqp0p3 = sycl::sqrt(sycl::max((double)(p[0] + p[3]), 0.0)) * nsf;
     }
     chi[0] = std::complex<double>(sqp0p3, 0.0);
     if (sqp0p3 == 0.0)
     {
-      chi[1] = std::complex<double>(-nhel * cl::sycl::sqrt(2.0 * p[0]), 0.0);
+      chi[1] = std::complex<double>(-nhel * sycl::sqrt(2.0 * p[0]), 0.0);
     }
     else
     {
@@ -121,13 +121,13 @@ void txxxxx(double pvec[3], double tmass, int nhel, int nst,
   int i, j; 
 
   double p[4] = {0, pvec[0], pvec[1], pvec[2]};
-  p[0] = cl::sycl::sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3] + tmass * tmass);
-  sqh = cl::sycl::sqrt(0.5);
-  sqs = cl::sycl::sqrt(0.5 / 3);
+  p[0] = sycl::sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3] + tmass * tmass);
+  sqh = sycl::sqrt(0.5);
+  sqs = sycl::sqrt(0.5 / 3);
 
   pt2 = p[1] * p[1] + p[2] * p[2];
-  pp = cl::sycl::min(p[0], cl::sycl::sqrt(pt2 + p[3] * p[3]));
-  pt = cl::sycl::min(pp, cl::sycl::sqrt(pt2));
+  pp = sycl::min(p[0], sycl::sqrt(pt2 + p[3] * p[3]));
+  pt = sycl::min(pp, sycl::sqrt(pt2));
 
   ft[4][0] = std::complex<double>(p[0] * nst, p[3] * nst);
   ft[5][0] = std::complex<double>(p[1] * nst, p[2] * nst);
@@ -156,8 +156,8 @@ void txxxxx(double pvec[3], double tmass, int nhel, int nst,
       else
       {
         ep[1] = std::complex<double>(-sqh, 0);
-        ep[2] = std::complex<double>(0, (nst * (p[3] < 0)) ? -cl::sycl::fabs(sqh)
-                                                         : cl::sycl::fabs(sqh));
+        ep[2] = std::complex<double>(0, (nst * (p[3] < 0)) ? -sycl::fabs(sqh)
+                                                         : sycl::fabs(sqh));
       }
     }
   }
@@ -186,8 +186,8 @@ void txxxxx(double pvec[3], double tmass, int nhel, int nst,
       else
       {
         em[1] = std::complex<double>(sqh, 0);
-        em[2] = std::complex<double>(0, (nst * (p[3] < 0)) ? -cl::sycl::fabs(sqh)
-                                                         : cl::sycl::fabs(sqh));
+        em[2] = std::complex<double>(0, (nst * (p[3] < 0)) ? -sycl::fabs(sqh)
+                                                         : sycl::fabs(sqh));
       }
     }
   }
@@ -296,19 +296,19 @@ void vxxxxx(double pvec[3], double vmass, int nhel, int nsv,
   int nsvahl; 
 
   double p[4] = {0, pvec[0], pvec[1], pvec[2]};
-  p[0] = cl::sycl::sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3] + vmass * vmass);
+  p[0] = sycl::sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3] + vmass * vmass);
 
-  sqh = cl::sycl::sqrt(0.5);
+  sqh = sycl::sqrt(0.5);
   hel = double(nhel);
-  nsvahl = nsv * cl::sycl::fabs(hel);
+  nsvahl = nsv * sycl::fabs(hel);
   pt2 = (p[1] * p[1]) + (p[2] * p[2]);
-  pp = cl::sycl::min(p[0], cl::sycl::sqrt(pt2 + (p[3] * p[3])));
-  pt = cl::sycl::min(pp, cl::sycl::sqrt(pt2));
+  pp = sycl::min(p[0], sycl::sqrt(pt2 + (p[3] * p[3])));
+  pt = sycl::min(pp, sycl::sqrt(pt2));
   vc[0] = std::complex<double>(p[0] * nsv, p[3] * nsv);
   vc[1] = std::complex<double>(p[1] * nsv, p[2] * nsv);
   if (vmass != 0.0)
   {
-    hel0 = 1.0 - cl::sycl::fabs(hel);
+    hel0 = 1.0 - sycl::fabs(hel);
     if (pp == 0.0)
     {
       vc[2] = std::complex<double>(0.0, 0.0);
@@ -334,14 +334,14 @@ void vxxxxx(double pvec[3], double vmass, int nhel, int nsv,
       {
         vc[3] = std::complex<double>(-hel * sqh, 0.0);
         vc[4] = std::complex<double>(
-                                     0.0, (nsvahl * (p[3] < 0)) ? -cl::sycl::fabs(sqh) : cl::sycl::fabs(sqh));
+                                     0.0, (nsvahl * (p[3] < 0)) ? -sycl::fabs(sqh) : sycl::fabs(sqh));
       }
     }
   }
   else
   {
     pp = p[0];
-    pt = cl::sycl::sqrt((p[1] * p[1]) + (p[2] * p[2]));
+    pt = sycl::sqrt((p[1] * p[1]) + (p[2] * p[2]));
     vc[2] = std::complex<double>(0.0, 0.0);
     vc[5] = std::complex<double>(hel * pt / pp * sqh, 0.0);
     if (pt != 0.0)
@@ -353,15 +353,15 @@ void vxxxxx(double pvec[3], double vmass, int nhel, int nsv,
     else
     {
       vc[3] = std::complex<double>(-hel * sqh, 0.0);
-      vc[4] = std::complex<double>(0.0, (nsv * (p[3] < 0)) ? -cl::sycl::fabs(sqh)
-                                                         : cl::sycl::fabs(sqh));
+      vc[4] = std::complex<double>(0.0, (nsv * (p[3] < 0)) ? -sycl::fabs(sqh)
+                                                         : sycl::fabs(sqh));
     }
   }
   return; 
 }
 
 void sxxxxx(double pvec[3], int nss, std::complex<double> sc[3],
-            cl::sycl::stream stream_ct1)
+            sycl::stream stream_ct1)
 {
   // double p[4] = {0, pvec[0], pvec[1], pvec[2]};
   // p[0] = sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3]+fmass*fmass);
@@ -381,40 +381,40 @@ void oxxxxx(double pvec[3], double fmass, int nhel, int nsf,
   int nh, ip, im; 
 
   double p[4] = {0, pvec[0], pvec[1], pvec[2]};
-  p[0] = cl::sycl::sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3] + fmass * fmass);
+  p[0] = sycl::sqrt(p[1] * p[1] + p[2] * p[2] + p[3] * p[3] + fmass * fmass);
 
   fo[0] = std::complex<double>(p[0] * nsf, p[3] * nsf);
   fo[1] = std::complex<double>(p[1] * nsf, p[2] * nsf);
   nh = nhel * nsf; 
   if (fmass != 0.000)
   {
-    pp = cl::sycl::min(p[0],
-                   cl::sycl::sqrt((p[1] * p[1]) + (p[2] * p[2]) + (p[3] * p[3])));
+    pp = sycl::min(p[0],
+                   sycl::sqrt((p[1] * p[1]) + (p[2] * p[2]) + (p[3] * p[3])));
     if (pp == 0.000)
     {
-      sqm[0] = cl::sycl::sqrt(cl::sycl::fabs(fmass));
-      sqm[1] = (fmass < 0) ? -cl::sycl::fabs(sqm[0]) : cl::sycl::fabs(sqm[0]);
+      sqm[0] = sycl::sqrt(sycl::fabs(fmass));
+      sqm[1] = (fmass < 0) ? -sycl::fabs(sqm[0]) : sycl::fabs(sqm[0]);
       ip = -((1 - nh)/2) * nhel; 
       im = (1 + nh)/2 * nhel;
-      fo[2] = im * sqm[abs(ip)];
-      fo[3] = ip * nsf * sqm[abs(ip)];
-      fo[4] = im * nsf * sqm[abs(im)];
-      fo[5] = ip * sqm[abs(im)];
+      fo[2] = im * sqm[sycl::abs(ip)];
+      fo[3] = ip * nsf * sqm[sycl::abs(ip)];
+      fo[4] = im * nsf * sqm[sycl::abs(im)];
+      fo[5] = ip * sqm[sycl::abs(im)];
     }
     else
     {
-      pp = cl::sycl::min(p[0],
-                     cl::sycl::sqrt((p[1] * p[1]) + (p[2] * p[2]) + (p[3] * p[3])));
+      pp = sycl::min(p[0],
+                     sycl::sqrt((p[1] * p[1]) + (p[2] * p[2]) + (p[3] * p[3])));
       sf[0] = double(1 + nsf + (1 - nsf) * nh) * 0.5; 
       sf[1] = double(1 + nsf - (1 - nsf) * nh) * 0.5;
-      omega[0] = cl::sycl::sqrt(p[0] + pp);
+      omega[0] = sycl::sqrt(p[0] + pp);
       omega[1] = fmass/omega[0]; 
       ip = (1 + nh)/2; 
       im = (1 - nh)/2; 
       sfomeg[0] = sf[0] * omega[ip]; 
       sfomeg[1] = sf[1] * omega[im];
-      pp3 = cl::sycl::max((double)(pp + p[3]), 0.00);
-      chi[0] = std::complex<double>(cl::sycl::sqrt(pp3 * 0.5 / pp), 0.00);
+      pp3 = sycl::max((double)(pp + p[3]), 0.00);
+      chi[0] = std::complex<double>(sycl::sqrt(pp3 * 0.5 / pp), 0.00);
       if (pp3 == 0.00)
       {
         chi[1] = std::complex<double>(-nh, 0.00);
@@ -422,7 +422,7 @@ void oxxxxx(double pvec[3], double fmass, int nhel, int nsf,
       else
       {
         chi[1] =
-            std::complex<double>(nh * p[1], -p[2]) / cl::sycl::sqrt(2.0 * pp * pp3);
+            std::complex<double>(nh * p[1], -p[2]) / sycl::sqrt(2.0 * pp * pp3);
       }
       fo[2] = sfomeg[1] * chi[im]; 
       fo[3] = sfomeg[1] * chi[ip]; 
@@ -438,12 +438,12 @@ void oxxxxx(double pvec[3], double fmass, int nhel, int nsf,
     }
     else
     {
-      sqp0p3 = cl::sycl::sqrt(cl::sycl::max((double)(p[0] + p[3]), 0.00)) * nsf;
+      sqp0p3 = sycl::sqrt(sycl::max((double)(p[0] + p[3]), 0.00)) * nsf;
     }
     chi[0] = std::complex<double>(sqp0p3, 0.00);
     if (sqp0p3 == 0.000)
     {
-      chi[1] = std::complex<double>(-nhel, 0.00) * cl::sycl::sqrt(2.0 * p[0]);
+      chi[1] = std::complex<double>(-nhel, 0.00) * sycl::sqrt(2.0 * p[0]);
     }
     else
     {
@@ -804,10 +804,10 @@ void VVV1P0_1(std::complex<double> V2[], const std::complex<double> V3[],
 
 void calculate_wavefunctions(int ihel, 
                              double local_mom[6][3],
-                             double &matrix, 
-                             int cHel[64][6], 
-                             double *cIPC,
-                             double *cIPD)
+                             double &matrix,
+                             const int cHel[64][6],
+                             const double *cIPC,
+                             const double *cIPD)
 {
   std::complex<double> amp[159];
   // Calculate wavefunctions for all processes
@@ -1717,10 +1717,12 @@ void calculate_wavefunctions(int ihel,
 //--------------------------------------------------------------------------
 // Evaluate |M|^2, part independent of incoming flavour.
 
-void sigmaKin(double *allmomenta, double *output,
-                            cl::sycl::nd_item<3> item_ct1,
-                            int cHel[64][6],
-                            double cIPC[6], double cIPD[2])
+void sigmaKin(sycl::accessor<double, 1, sycl::access::mode::write, sycl::access::target::global_buffer> allmomenta, 
+              sycl::accessor<double, 1, sycl::access::mode::write, sycl::access::target::global_buffer> output,
+                            sycl::nd_item<3> item_ct1,
+                            const int cHel[64][6],
+                            const double cIPC[6], 
+                            const double cIPD[2])
 {
   // Set the parameters which change event by event
   // Need to discuss this with Stefan
@@ -1859,9 +1861,6 @@ class CPPProcess
       -1}, {1, 1, -1, 1, 1, 1}, {1, 1, 1, -1, -1, -1}, {1, 1, 1, -1, -1, 1},
       {1, 1, 1, -1, 1, -1}, {1, 1, 1, -1, 1, 1}, {1, 1, 1, 1, -1, -1}, {1, 1,
       1, 1, -1, 1}, {1, 1, 1, 1, 1, -1}, {1, 1, 1, 1, 1, 1}};
-  //cl::sycl::queue()
-  //    .memcpy(cHel.get_ptr(), tHel, ncomb * nexternal * sizeof(int))
-   //   .wait();
   // perm - nodim
   // static int perm[nexternal] = {0, 1, 2, 3};
 	}
@@ -1874,8 +1873,8 @@ class CPPProcess
 	// Initialize process.
 	void initProc(string param_card_name)
 	{
-		cl::sycl::device dev_ct1 = cl::sycl::device();
-		cl::sycl::queue q_ct1 = cl::sycl::queue();
+		sycl::device dev_ct1 = sycl::device();
+		sycl::queue q_ct1 = sycl::queue();
 		// Instantiate the model class and set parameters that stay fixed during run
 		pars = Parameters_sm::getInstance(); 
 		SLHAReader slha(param_card_name); 
@@ -1895,8 +1894,6 @@ class CPPProcess
 		static std::complex<double> tIPC[3] = {pars->GC_10, pars->GC_11, pars->GC_12};
 		static double tIPD[2] = {pars->mdl_MT, pars->mdl_WT};
 
-		//q_ct1.memcpy(cIPC.get_ptr(), tIPC, 3 * sizeof(std::complex<double>)).wait();
-		//q_ct1.memcpy(cIPD.get_ptr(), tIPD, 2 * sizeof(double)).wait();
 	}
 
     /* void setInitial(int inid1, int inid2)  */

@@ -208,7 +208,7 @@ std::vector<double *> rambo(double et, std::vector<double> &xm, double &wt) {
   for (int i = 0; i < n; i++) {
     if (xm[i] != 0.)
       nm = nm + 1;
-    xmt = xmt + abs(xm[i]);
+    xmt = xmt + sycl::abs(xm[i]);
   }
   if (xmt > et) {
     std::cout << "Too low energy: " << et << " needed " << xmt << std::endl;
