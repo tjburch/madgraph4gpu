@@ -10,18 +10,15 @@
 #define HelAmps_sm_H
 
 #include <CL/sycl.hpp>
-#include <dpct/dpct.hpp>
 #include <cmath>
 #include "Parameters_sm.h"
 
-using namespace std; 
-
-dpct::constant_memory<int, 2> cHel(64, 6);
-dpct::constant_memory<double, 1> cmME(6); // value hardcoded now
-dpct::constant_memory<int, 1> cPerm(4);
+int cHel[64][6];
+double cmME[6]; // value hardcoded now
+int cPerm[4];
 //
-dpct::constant_memory<double, 1> cIPC(6); // coupling ?
-dpct::constant_memory<double, 1> cIPD(2);
+double cIPC[6]; // coupling ?
+double cIPD[2];
 
 /////
 
@@ -807,10 +804,10 @@ void VVV1P0_1(std::complex<double> V2[], const std::complex<double> V3[],
 
 void calculate_wavefunctions(int ihel, 
                              double local_mom[6][3],
-                             double &matrix, 
-                             dpct::accessor<int, dpct::constant, 2> cHel, 
-                             double *cIPC,
-                             double *cIPD)
+                             double &matrix,
+                             const int cHel[64][6],
+                             const double *cIPC,
+                             const double *cIPD)
 {
   std::complex<double> amp[159];
   // Calculate wavefunctions for all processes
@@ -1720,10 +1717,12 @@ void calculate_wavefunctions(int ihel,
 //--------------------------------------------------------------------------
 // Evaluate |M|^2, part independent of incoming flavour.
 
-SYCL_EXTERNAL void sigmaKin(double *allmomenta, double *output,
+void sigmaKin(sycl::accessor<double, 1, sycl::access::mode::write, sycl::access::target::global_buffer> allmomenta, 
+              sycl::accessor<double, 1, sycl::access::mode::write, sycl::access::target::global_buffer> output,
                             sycl::nd_item<3> item_ct1,
-                            dpct::accessor<int, dpct::constant, 2> cHel,
-                            double *cIPC, double *cIPD)
+                            const int cHel[64][6],
+                            const double cIPC[6], 
+                            const double cIPD[2])
 {
   // Set the parameters which change event by event
   // Need to discuss this with Stefan
@@ -1747,7 +1746,8 @@ SYCL_EXTERNAL void sigmaKin(double *allmomenta, double *output,
   std::complex<double> amp[159];
 
   double local_m[6][3];
-  int DIM = item_ct1.get_local_range().get(2) * item_ct1.get_group_range(2);
+
+  int DIM = item_ct1.get_local_range().get(2) * item_ct1.get_group_range().get(2);
   // for (int i=0; i<20;i++){
   // printf(" %f ", allmomenta[i]);
   // }
@@ -1861,9 +1861,6 @@ class CPPProcess
       -1}, {1, 1, -1, 1, 1, 1}, {1, 1, 1, -1, -1, -1}, {1, 1, 1, -1, -1, 1},
       {1, 1, 1, -1, 1, -1}, {1, 1, 1, -1, 1, 1}, {1, 1, 1, 1, -1, -1}, {1, 1,
       1, 1, -1, 1}, {1, 1, 1, 1, 1, -1}, {1, 1, 1, 1, 1, 1}};
-  dpct::get_default_queue()
-      .memcpy(cHel.get_ptr(), tHel, ncomb * nexternal * sizeof(int))
-      .wait();
   // perm - nodim
   // static int perm[nexternal] = {0, 1, 2, 3};
 	}
@@ -1876,8 +1873,8 @@ class CPPProcess
 	// Initialize process.
 	void initProc(string param_card_name)
 	{
-		dpct::device_ext &dev_ct1 = dpct::get_current_device();
-		sycl::queue &q_ct1 = dev_ct1.default_queue();
+		sycl::device dev_ct1 = sycl::device();
+		sycl::queue q_ct1 = sycl::queue();
 		// Instantiate the model class and set parameters that stay fixed during run
 		pars = Parameters_sm::getInstance(); 
 		SLHAReader slha(param_card_name); 
@@ -1897,8 +1894,6 @@ class CPPProcess
 		static std::complex<double> tIPC[3] = {pars->GC_10, pars->GC_11, pars->GC_12};
 		static double tIPD[2] = {pars->mdl_MT, pars->mdl_WT};
 
-		q_ct1.memcpy(cIPC.get_ptr(), tIPC, 3 * sizeof(std::complex<double>)).wait();
-		q_ct1.memcpy(cIPD.get_ptr(), tIPD, 2 * sizeof(double)).wait();
 	}
 
     /* void setInitial(int inid1, int inid2)  */

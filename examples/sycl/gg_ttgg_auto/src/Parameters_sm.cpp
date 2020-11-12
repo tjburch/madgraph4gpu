@@ -6,7 +6,6 @@
 //==========================================================================
 
 #include <CL/sycl.hpp>
-#include <dpct/dpct.hpp>
 #include <iostream>
 #include <iomanip>
 #include "Parameters_sm.h"
