@@ -1,5 +1,4 @@
 #include <CL/sycl.hpp>
-#include <dpct/dpct.hpp>
 #include <algorithm> // perf stats
 #include <cstring>
 #include <iomanip>
@@ -17,6 +16,8 @@
 
 #define gpuErrchk3(ans)                                                        \
   { gpuAssert3((ans), __FILE__, __LINE__); }
+
+class sycl_kernel;
 
 inline void gpuAssert3(int code, const char *file, int line,
                        bool abort = true) {
@@ -39,8 +40,8 @@ int usage(char* argv0, int ret = 1) {
 }
 
 int main(int argc, char **argv) {
-  dpct::device_ext &dev_ct1 = dpct::get_current_device();
-  sycl::queue &q_ct1 = dev_ct1.default_queue();
+  sycl::queue q_ct1;
+  sycl::device dev_ct1 = q_ct1.get_device();;
   bool verbose = false, debug = false, perf = false;
   int numiter = 0, gpublocks = 1, gputhreads = 1;
   std::vector<int> numvec;
@@ -76,7 +77,6 @@ int main(int argc, char **argv) {
   if (numiter == 0)
     return usage(argv[0]);
 
-  sycl::free(0, q_ct1);
   if (verbose)
     std::cout << "# iterations: " << numiter << std::endl;
 
@@ -97,11 +97,6 @@ int main(int argc, char **argv) {
   //typedef double arr_t[6][4];
   double* lp = new double[6*3*dim];
 
-  double* meHostPtr = new double[dim*1];
-  double *meDevPtr =0;
-  int num_bytes_back = 1 * dim * sizeof(double);
-  meDevPtr = (double *)sycl::malloc_device(num_bytes_back, q_ct1);
-
   std::vector<double> matrixelementvector;
 
   for (int x = 0; x < numiter; ++x) {
@@ -119,11 +114,10 @@ int main(int argc, char **argv) {
     }
 
     //new
-    int num_bytes = 3*6*dim * sizeof(double);
-    double *allmomenta = 0;
-    allmomenta = (double *)sycl::malloc_device(num_bytes, q_ct1);
-    q_ct1.memcpy(allmomenta, lp, num_bytes).wait();
-
+    double allmomenta[3*6*dim];
+    sycl::buffer<double, 1> allmomenta_buff(allmomenta, sycl::range<1>{static_cast<size_t>(3*6*dim)});
+    double me[1*dim];
+    sycl::buffer<double, 1> me_buff(sycl::range<1>{static_cast<size_t>(1*dim)});
     //gpuErrchk3(cudaMemcpy3D(&tdp));
 
    //process.preSigmaKin();
@@ -140,24 +134,38 @@ int main(int argc, char **argv) {
     limit. To get the device limit, query info::device::max_work_group_size.
     Adjust the workgroup size if needed.
     */
+
+
     q_ct1.submit([&](sycl::handler &cgh) {
-      extern dpct::constant_memory<int, 2> cHel;
-      extern dpct::constant_memory<double, 1> cIPC;
-      extern dpct::constant_memory<double, 1> cIPD;
+      int cHel_local[64][6];
+        for (int i=0; i<64; i++){
+          for (int j=0; j<64; j++){
+            cHel_local[i][j] = cHel[i][j];
+          }
+        }
 
-      auto cIPC_ptr_ct1 = cIPC.get_ptr();
-      auto cIPD_ptr_ct1 = cIPD.get_ptr();
+        double cIPC_local[6];
+        for (int i=0; i<6; i++){
+            cIPC_local[i] = cIPC[i];
+        }
 
-      auto cHel_acc_ct1 = cHel.get_access(cgh);
+        double cIPD_local[2];
+        for (int i=0; i<2; i++){
+            cIPD_local[i] = cIPD[i];
+        }
 
-      cgh.parallel_for(sycl::nd_range<3>(sycl::range<3>(1, 1, gpublocks) *
+      auto allmomenta_acc = allmomenta_buff.get_access<sycl::access::mode::write, sycl::access::target::global_buffer>(cgh);
+      auto me_acc = me_buff.get_access<sycl::access::mode::write, sycl::access::target::global_buffer>(cgh);
+
+      cgh.parallel_for<sycl_kernel>(sycl::nd_range<3>(sycl::range<3>(1, 1, gpublocks) *
                                              sycl::range<3>(1, 1, gputhreads),
                                          sycl::range<3>(1, 1, gputhreads)),
                        [=](sycl::nd_item<3> item_ct1) {
-                         sigmaKin(allmomenta, meDevPtr, item_ct1, cHel_acc_ct1,
-                                  cIPC_ptr_ct1, cIPD_ptr_ct1);
+                         sigmaKin(allmomenta_acc, me_acc, item_ct1, cHel_local,
+                                  cIPC_local, cIPD_local);
                        });
     }); //, debug, verbose);
+    q_ct1.wait();
     /*
     DPCT1010:2: SYCL uses exceptions to report errors and does not use the error
     codes. The call was replaced with 0. You need to rewrite this code.
@@ -165,8 +173,6 @@ int main(int argc, char **argv) {
     gpuErrchk3(0);
     //gpuErrchk3(cudaMemcpy2D(meHostPtr, sizeof(double), meDevPtr, mePitch,
     //                        sizeof(double), dim, cudaMemcpyDeviceToHost));
-
-    q_ct1.memcpy(meHostPtr, meDevPtr, 1 * dim * sizeof(double)).wait();
 
     if (verbose)
       std::cout << "***********************************" << std::endl
@@ -201,9 +207,9 @@ int main(int argc, char **argv) {
           if (verbose)
             std::cout << " Matrix element = "
                       //	 << setiosflags(ios::fixed) << setprecision(17)
-                      << meHostPtr[i*1 + d] << " GeV^" << meGeVexponent << std::endl;
+                      << me[i*1 + d] << " GeV^" << meGeVexponent << std::endl;
           if (perf)
-            matrixelementvector.push_back(meHostPtr[i*1 + d]);
+            matrixelementvector.push_back(me[i*1 + d]);
         }
 
         if (verbose)

@@ -6,7 +6,6 @@
 //==========================================================================
 
 #include <CL/sycl.hpp>
-#include <dpct/dpct.hpp>
 #include "HelAmps_sm.h"
 #include <complex> 
 #include <cmath> 
