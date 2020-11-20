@@ -120,9 +120,7 @@ int main(int argc, char **argv) {
     //new
     //double allmomenta[3*6*dim];
     //sycl::buffer<double, 1> allmomenta_buff(allmomenta, sycl::range<1>{static_cast<size_t>(3*6*dim)});
-    //double ** allmomenta_ptr = (double **) malloc( 3*6*dim*sizeof(double));
-    double ** allmomenta = (double**) sycl::malloc_shared(3*6*dim*sizeof(double*), q_ct1);
-    //double * allmomenta = sycl::malloc_shared<double>(3*6*dim*sizeof(double) ,q_ct1);
+    double * allmomenta = sycl::malloc_shared<double>(3*6*dim*sizeof(double) ,q_ct1);
     //double me[1*dim];
     //sycl::buffer<double, 1> me_buff(sycl::range<1>{static_cast<size_t>(1*dim)});
     double * me = sycl::malloc_shared<double>(dim*sizeof(double), q_ct1);
