@@ -151,7 +151,7 @@ int main(int argc, char **argv) {
                                               sycl::range<3>(1, 1, gputhreads),
                                               sycl::range<3>(1, 1, gputhreads));
   
-  // Copy over host to USM objects
+  // Copy over host to USM objects -> OLD replace with memcpy
   //q_ct1.memcpy(cHel_local, cHel, sizeof(cHel)).wait();               
   // double cHel_flat[64 * 6];
   // for (int i=0; i<64; i++){
