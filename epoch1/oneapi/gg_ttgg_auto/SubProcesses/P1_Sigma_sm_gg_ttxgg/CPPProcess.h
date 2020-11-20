@@ -805,9 +805,9 @@ void VVV1P0_1(std::complex<double> V2[], const std::complex<double> V3[],
 void calculate_wavefunctions(int ihel, 
                              double local_mom[6][3],
                              double &matrix,
-                             const int cHel[64][6],
-                             const double *cIPC,
-                             const double *cIPD)
+                             int **cHel,
+                             double *cIPC,
+                             double *cIPD)
 {
   std::complex<double> amp[159];
   // Calculate wavefunctions for all processes
@@ -1717,114 +1717,132 @@ void calculate_wavefunctions(int ihel,
 //--------------------------------------------------------------------------
 // Evaluate |M|^2, part independent of incoming flavour.
 
-void sigmaKin(sycl::accessor<double, 1, sycl::access::mode::write, sycl::access::target::global_buffer> allmomenta, 
-              sycl::accessor<double, 1, sycl::access::mode::write, sycl::access::target::global_buffer> output,
-                            sycl::nd_item<3> item_ct1,
-                            const int cHel[64][6],
-                            const double cIPC[6], 
-                            const double cIPD[2])
-{
-  // Set the parameters which change event by event
-  // Need to discuss this with Stefan
-  // pars->setDependentParameters();
-  // pars->setDependentCouplings();
+class sigmaKin {
+	
+ public:
+	// constructor
+ sigmaKin(double *allmomenta,
+          double *output,
+          int **cHel,
+          double *cIPC,
+          double *cIPD)
+	 : m_allmomenta(allmomenta),
+		m_output(output),
+		m_cHel(cHel),
+		m_cIPC(cIPC),
+		m_cIPD(cIPD)
+		{}
+	
+	void operator(){sycl::nd_item<3> item){
+		
+		// Set the parameters which change event by event
+		// Need to discuss this with Stefan
+		// pars->setDependentParameters();
+		// pars->setDependentCouplings();
+		
+		// Reset color flows
 
-  // Reset color flows
+		// for (int xx = 0; xx < 384; ++xx) {
+		const int nprocesses = 1;
+		int tid = item.get_group(2) * item.get_local_range().get(2) + item.get_local_id(2);
 
-  // for (int xx = 0; xx < 384; ++xx) {
-  const int nprocesses = 1;
-  int tid = item_ct1.get_group(2) * item_ct1.get_local_range().get(2) +
-            item_ct1.get_local_id(2);
+		// char *devPtr = (char *)tp.ptr;
+		// size_t dpt = tp.pitch;
+		// size_t slicePitch = dpt * 6;
 
-  // char *devPtr = (char *)tp.ptr;
-  // size_t dpt = tp.pitch;
-  // size_t slicePitch = dpt * 6;
+		// char *dps = devPtr + dim * slicePitch;
+		double matrix_element[nprocesses];
 
-  // char *dps = devPtr + dim * slicePitch;
-  double matrix_element[nprocesses];
+		std::complex<double> amp[159];
 
-  std::complex<double> amp[159];
+		double local_m[6][3];
 
-  double local_m[6][3];
-
-  int DIM = item_ct1.get_local_range().get(2) * item_ct1.get_group_range().get(2);
-  // for (int i=0; i<20;i++){
-  // printf(" %f ", allmomenta[i]);
-  // }
-  // printf("\n");
-  // printf("DIM is %i/%i\n", tid, DIM);
-  for (int i = 0; i < 6; i++ )
-  {
-    for (int j = 0; j < 3; j++ )
-    {
-      local_m[i][j] = allmomenta[i * 3 * DIM + j * DIM + tid]; 
-      // printf(" %f ", local_m[i][j]);
-    }
-    // printf("\n");
-  }
-
-
-  // Local variables and constants
-  const int ncomb = 64; 
-  // static bool goodhel[ncomb] = {ncomb * false};
-  // static int ntry = 0, sum_hel = 0, ngood = 0;
-  // static int igood[ncomb];
-  // static int jhel;
-  // std::complex<double> **wfs;
-  // double t[1];
-  // Helicities for the process
-  // static const int helicities[ncomb][nexternal] =
-  // {{-1,-1,-1,-1,-1,-1},{-1,-1,-1,-1,-1,1},{-1,-1,-1,-1,1,-1},{-1,-1,-1,-1,1,1
-  // },{-1,-1,-1,1,-1,-1},{-1,-1,-1,1,-1,1},{-1,-1,-1,1,1,-1},{-1,-1,-1,1,1,1},{
-  // -1,-1,1,-1,-1,-1},{-1,-1,1,-1,-1,1},{-1,-1,1,-1,1,-1},{-1,-1,1,-1,1,1},{-1,
-  // -1,1,1,-1,-1},{-1,-1,1,1,-1,1},{-1,-1,1,1,1,-1},{-1,-1,1,1,1,1},{-1,1,-1,-1
-  // ,-1,-1},{-1,1,-1,-1,-1,1},{-1,1,-1,-1,1,-1},{-1,1,-1,-1,1,1},{-1,1,-1,1,-1,
-  // -1},{-1,1,-1,1,-1,1},{-1,1,-1,1,1,-1},{-1,1,-1,1,1,1},{-1,1,1,-1,-1,-1},{-1
-  // ,1,1,-1,-1,1},{-1,1,1,-1,1,-1},{-1,1,1,-1,1,1},{-1,1,1,1,-1,-1},{-1,1,1,1,-
-  // 1,1},{-1,1,1,1,1,-1},{-1,1,1,1,1,1},{1,-1,-1,-1,-1,-1},{1,-1,-1,-1,-1,1},{1
-  // ,-1,-1,-1,1,-1},{1,-1,-1,-1,1,1},{1,-1,-1,1,-1,-1},{1,-1,-1,1,-1,1},{1,-1,-
-  // 1,1,1,-1},{1,-1,-1,1,1,1},{1,-1,1,-1,-1,-1},{1,-1,1,-1,-1,1},{1,-1,1,-1,1,-
-  // 1},{1,-1,1,-1,1,1},{1,-1,1,1,-1,-1},{1,-1,1,1,-1,1},{1,-1,1,1,1,-1},{1,-1,1
-  // ,1,1,1},{1,1,-1,-1,-1,-1},{1,1,-1,-1,-1,1},{1,1,-1,-1,1,-1},{1,1,-1,-1,1,1}
-  // ,{1,1,-1,1,-1,-1},{1,1,-1,1,-1,1},{1,1,-1,1,1,-1},{1,1,-1,1,1,1},{1,1,1,-1,
-  // -1,-1},{1,1,1,-1,-1,1},{1,1,1,-1,1,-1},{1,1,1,-1,1,1},{1,1,1,1,-1,-1},{1,1,
-  // 1,1,-1,1},{1,1,1,1,1,-1},{1,1,1,1,1,1}};
-  // Denominators: spins, colors and identical particles
-  const int denominators[1] = {512}; 
+		int DIM = item.get_local_range().get(2) * item.get_group_range().get(2);
+		// for (int i=0; i<20;i++){
+		// printf(" %f ", allmomenta[i]);
+		// }
+		// printf("\n");
+		// printf("DIM is %i/%i\n", tid, DIM);
+		for (int i = 0; i < 6; i++ )
+			{
+				for (int j = 0; j < 3; j++ )
+					{
+						local_m[i][j] = m_allmomenta[i * 3 * DIM + j * DIM + tid];
+						// printf(" %f ", local_m[i][j]);
+					}
+				// printf("\n");
+			}
 
 
-  // Reset the matrix elements
-  for(int i = 0; i < nprocesses; i++ )
-  {
-    matrix_element[i] = 0.; 
-  }
-  // Define permutation
-  // int perm[nexternal];
-  // for(int i = 0; i < nexternal; i++){
-  // perm[i]=i;
-  // }
+		// Local variables and constants
+		const int ncomb = 64;
+		// static bool goodhel[ncomb] = {ncomb * false};
+		// static int ntry = 0, sum_hel = 0, ngood = 0;
+		// static int igood[ncomb];
+		// static int jhel;
+		// std::complex<double> **wfs;
+		// double t[1];
+		// Helicities for the process
+		// static const int helicities[ncomb][nexternal] =
+		// {{-1,-1,-1,-1,-1,-1},{-1,-1,-1,-1,-1,1},{-1,-1,-1,-1,1,-1},{-1,-1,-1,-1,1,1
+		// },{-1,-1,-1,1,-1,-1},{-1,-1,-1,1,-1,1},{-1,-1,-1,1,1,-1},{-1,-1,-1,1,1,1},{
+		// -1,-1,1,-1,-1,-1},{-1,-1,1,-1,-1,1},{-1,-1,1,-1,1,-1},{-1,-1,1,-1,1,1},{-1,
+		// -1,1,1,-1,-1},{-1,-1,1,1,-1,1},{-1,-1,1,1,1,-1},{-1,-1,1,1,1,1},{-1,1,-1,-1
+		// ,-1,-1},{-1,1,-1,-1,-1,1},{-1,1,-1,-1,1,-1},{-1,1,-1,-1,1,1},{-1,1,-1,1,-1,
+		// -1},{-1,1,-1,1,-1,1},{-1,1,-1,1,1,-1},{-1,1,-1,1,1,1},{-1,1,1,-1,-1,-1},{-1
+		// ,1,1,-1,-1,1},{-1,1,1,-1,1,-1},{-1,1,1,-1,1,1},{-1,1,1,1,-1,-1},{-1,1,1,1,-
+		// 1,1},{-1,1,1,1,1,-1},{-1,1,1,1,1,1},{1,-1,-1,-1,-1,-1},{1,-1,-1,-1,-1,1},{1
+		// ,-1,-1,-1,1,-1},{1,-1,-1,-1,1,1},{1,-1,-1,1,-1,-1},{1,-1,-1,1,-1,1},{1,-1,-
+		// 1,1,1,-1},{1,-1,-1,1,1,1},{1,-1,1,-1,-1,-1},{1,-1,1,-1,-1,1},{1,-1,1,-1,1,-
+		// 1},{1,-1,1,-1,1,1},{1,-1,1,1,-1,-1},{1,-1,1,1,-1,1},{1,-1,1,1,1,-1},{1,-1,1
+		// ,1,1,1},{1,1,-1,-1,-1,-1},{1,1,-1,-1,-1,1},{1,1,-1,-1,1,-1},{1,1,-1,-1,1,1}
+		// ,{1,1,-1,1,-1,-1},{1,1,-1,1,-1,1},{1,1,-1,1,1,-1},{1,1,-1,1,1,1},{1,1,1,-1,
+		// -1,-1},{1,1,1,-1,-1,1},{1,1,1,-1,1,-1},{1,1,1,-1,1,1},{1,1,1,1,-1,-1},{1,1,
+		// 1,1,-1,1},{1,1,1,1,1,-1},{1,1,1,1,1,1}};
+		// Denominators: spins, colors and identical particles
+		const int denominators[1] = {512};
 
 
-  for (int ihel = 0; ihel < ncomb; ihel++ )
-  {
-    calculate_wavefunctions(ihel, local_m, matrix_element[0], cHel, cIPC, cIPD);
-  }
+		// Reset the matrix elements
+		for(int i = 0; i < nprocesses; i++ )
+			{
+				matrix_element[i] = 0.;
+			}
+		// Define permutation
+		// int perm[nexternal];
+		// for(int i = 0; i < nexternal; i++){
+		// perm[i]=i;
+		// }
 
 
-  for (int i = 0; i < nprocesses; ++ i)
-  {
-    matrix_element[i] /= denominators[i]; 
-  }
-  for (int i = 0; i < nprocesses; ++ i)
-  {
-    output[i * nprocesses + tid] = matrix_element[i]; 
-    // printf("output %i %i %i %f", tid, i, i*nprocesses+tid,
-    // output[i*nprocesses+tid]);
-
-  }
+		for (int ihel = 0; ihel < ncomb; ihel++ )
+			{
+				// tjb todo
+				calculate_wavefunctions(ihel, local_m, matrix_element[0], m_cHel, m_cIPC, m_cIPD);
+			}
 
 
-}
+		for (int i = 0; i < nprocesses; ++ i)
+			{
+				matrix_element[i] /= denominators[i];
+			}
+		for (int i = 0; i < nprocesses; ++ i)
+			{
+				output[i * nprocesses + tid] = matrix_element[i];
+				// printf("output %i %i %i %f", tid, i, i*nprocesses+tid,
+				// output[i*nprocesses+tid]);
+
+			}
+	}
+
+ private:
+	double *m_allmomenta;
+	double *m_output;
+	int **m_cHel;
+	double *m_cIPC;
+	double *m_cIPD;
+	
+};
 
 class CPPProcess
 {

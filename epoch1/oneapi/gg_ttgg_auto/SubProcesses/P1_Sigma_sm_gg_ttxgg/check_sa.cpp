@@ -40,8 +40,10 @@ int usage(char* argv0, int ret = 1) {
 }
 
 int main(int argc, char **argv) {
-  sycl::queue q_ct1;
+  sycl::cpu_selector selector;
+  sycl::queue q_ct1(selector);
   sycl::device dev_ct1 = q_ct1.get_device();;
+  std::cout << "Device: " << dev_ct1.get_info<sycl::info::device::name>() << "\n";
   bool verbose = false, debug = false, perf = false;
   int numiter = 0, gpublocks = 1, gputhreads = 1;
   std::vector<int> numvec;
@@ -99,6 +101,8 @@ int main(int argc, char **argv) {
 
   std::vector<double> matrixelementvector;
 
+	  
+  
   for (int x = 0; x < numiter; ++x) {
     // Get phase space point
     std::vector<std::vector<double *> > p =
@@ -114,17 +118,24 @@ int main(int argc, char **argv) {
     }
 
     //new
-    double allmomenta[3*6*dim];
-    sycl::buffer<double, 1> allmomenta_buff(allmomenta, sycl::range<1>{static_cast<size_t>(3*6*dim)});
-    double me[1*dim];
-    sycl::buffer<double, 1> me_buff(sycl::range<1>{static_cast<size_t>(1*dim)});
-    //gpuErrchk3(cudaMemcpy3D(&tdp));
+    //double allmomenta[3*6*dim];
+    //sycl::buffer<double, 1> allmomenta_buff(allmomenta, sycl::range<1>{static_cast<size_t>(3*6*dim)});
+    //double ** allmomenta_ptr = (double **) malloc( 3*6*dim*sizeof(double));
+    double ** allmomenta = (double**) sycl::malloc_shared(3*6*dim*sizeof(double*), q_ct1);
+    //double * allmomenta = sycl::malloc_shared<double>(3*6*dim*sizeof(double) ,q_ct1);
+    //double me[1*dim];
+    //sycl::buffer<double, 1> me_buff(sycl::range<1>{static_cast<size_t>(1*dim)});
+    double * me = sycl::malloc_shared<double>(dim*sizeof(double), q_ct1);
+
+
+
+  //gpuErrchk3(cudaMemcpy3D(&tdp));
 
    //process.preSigmaKin();
 
-    if (perf) {
-      timer.Start();
-    }
+  if (perf) {
+	  timer.Start();
+  }
 
     // Evaluate matrix element
     // later process.sigmaKin(ncomb, goodhel, ntry, sum_hel, ngood, igood,
@@ -134,49 +145,79 @@ int main(int argc, char **argv) {
     limit. To get the device limit, query info::device::max_work_group_size.
     Adjust the workgroup size if needed.
     */
+  
+    /* Setup Kernel Variables */
+  sycl::nd_range nd_range = sycl::nd_range<3>(sycl::range<3>(1, 1, gpublocks) *
+                                              sycl::range<3>(1, 1, gputhreads),
+                                              sycl::range<3>(1, 1, gputhreads));
+  
+  // Copy over host to USM objects
+  //q_ct1.memcpy(cHel_local, cHel, sizeof(cHel)).wait();               
+  // double cHel_flat[64 * 6];
+  // for (int i=0; i<64; i++){
+  //   for (int j=0; j<64; j++){
+  //     cHel_flat[64*i + j] = cHel[i][j];
+  //   }
+  // }
+
+  // double cIPC_local[6];
+  // for (int i=0; i<6; i++){
+	//   cIPC_local[i] = cIPC[i];
+  // }
+
+  // double cIPD_local[2];
+  // for (int i=0; i<2; i++){
+	//   cIPD_local[i] = cIPD[i];
+  // }
+  
+  // USM Allocations, copy host -> device
+  const int cHEL_ROW = 64;
+  const int cHEL_COL = 6;
+  int **cHel_local = sycl::malloc_device<int*>(cHEL_ROW *sizeof(int*), q_ct1);
+  // allocate elements using host pointers, copy
+  for (int i=0; i< cHEL_ROW ; i++){
+	  cHel_local[i] = sycl::malloc_device<int>(cHEL_COL * sizeof(int), q_ct1);
+	  q_ct1.memcpy(cHel_local[i], &cHel[i][0], cHEL_COL * sizeof(int)).wait_and_throw();	  
+  }
+  // copy host-side pointers
+  q_ct1.memcpy(cHel_local, &cHel[0], cHEL_ROW * cHEL_COL * sizeof(int)).wait_and_throw();
+
+  double *cIPC_local = sycl::malloc_device<double>(sizeof(cIPC), q_ct1);
+  q_ct1.memcpy(cIPC_local, cIPC, sizeof(cIPC)).wait_and_throw();
+        
+  double *cIPD_local = sycl::malloc_device<double>(sizeof(cIPD), q_ct1);
+  q_ct1.memcpy(cIPD_local, cIPD, sizeof(cIPD)).wait_and_throw();
+
+  try{
+	  q_ct1.submit([&](sycl::handler &cgh) {
+		    
+			  // instantiate kernel
+			  auto k = sigmaKin(allmomenta,
+			                    me,
+			                    cHel_local,
+			                    cIPC_local,
+			                    cIPD_local);
+			  
+			  cgh.parallel_for(nd_range, k);
+
+		  }).wait_and_throw(); //, debug, verbose);
+  } catch(const sycl::exception& e){
+	  std::cout << "error: " << e.what();
+  }
+  
+  // USM device -> host
+  for (int i=0; i< cHEL_ROW ; i++){
+	  q_ct1.memcpy(&cHel[i][0], cHel_local[i],  cHEL_COL * sizeof(int)).wait_and_throw();	  
+  }
+  // copy host-side pointers
+  q_ct1.memcpy(&cHel[0], cHel_local, cHEL_ROW * cHEL_COL * sizeof(int)).wait_and_throw();
+  q_ct1.memcpy(cIPC, cIPC_local, sizeof(cIPC)).wait_and_throw();
+  q_ct1.memcpy(cIPD, cIPD_local, sizeof(cIPD)).wait_and_throw();
 
 
-    q_ct1.submit([&](sycl::handler &cgh) {
-      int cHel_local[64][6];
-        for (int i=0; i<64; i++){
-          for (int j=0; j<64; j++){
-            cHel_local[i][j] = cHel[i][j];
-          }
-        }
-
-        double cIPC_local[6];
-        for (int i=0; i<6; i++){
-            cIPC_local[i] = cIPC[i];
-        }
-
-        double cIPD_local[2];
-        for (int i=0; i<2; i++){
-            cIPD_local[i] = cIPD[i];
-        }
-
-      auto allmomenta_acc = allmomenta_buff.get_access<sycl::access::mode::write, sycl::access::target::global_buffer>(cgh);
-      auto me_acc = me_buff.get_access<sycl::access::mode::write, sycl::access::target::global_buffer>(cgh);
-
-      cgh.parallel_for<sycl_kernel>(sycl::nd_range<3>(sycl::range<3>(1, 1, gpublocks) *
-                                             sycl::range<3>(1, 1, gputhreads),
-                                         sycl::range<3>(1, 1, gputhreads)),
-                       [=](sycl::nd_item<3> item_ct1) {
-                         sigmaKin(allmomenta_acc, me_acc, item_ct1, cHel_local,
-                                  cIPC_local, cIPD_local);
-                       });
-    }); //, debug, verbose);
-    q_ct1.wait();
-    /*
-    DPCT1010:2: SYCL uses exceptions to report errors and does not use the error
-    codes. The call was replaced with 0. You need to rewrite this code.
-    */
-    gpuErrchk3(0);
-    //gpuErrchk3(cudaMemcpy2D(meHostPtr, sizeof(double), meDevPtr, mePitch,
-    //                        sizeof(double), dim, cudaMemcpyDeviceToHost));
-
-    if (verbose)
-      std::cout << "***********************************" << std::endl
-                << "Iteration #" << x+1 << " of " << numiter << std::endl;
+  if (verbose)
+	  std::cout << "***********************************" << std::endl
+	            << "Iteration #" << x+1 << " of " << numiter << std::endl;
 
     if (perf) {
       float gputime = timer.GetDuration();
