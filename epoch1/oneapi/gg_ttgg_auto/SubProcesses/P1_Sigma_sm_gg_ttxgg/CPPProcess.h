@@ -1733,7 +1733,7 @@ class sigmaKin {
 		m_cIPD(cIPD)
 		{}
 	
-	void operator(){sycl::nd_item<3> item){
+	void operator()(sycl::nd_item<3> item){
 		
 		// Set the parameters which change event by event
 		// Need to discuss this with Stefan
@@ -1828,7 +1828,7 @@ class sigmaKin {
 			}
 		for (int i = 0; i < nprocesses; ++ i)
 			{
-				output[i * nprocesses + tid] = matrix_element[i];
+				m_output[i * nprocesses + tid] = matrix_element[i];
 				// printf("output %i %i %i %f", tid, i, i*nprocesses+tid,
 				// output[i*nprocesses+tid]);
 
