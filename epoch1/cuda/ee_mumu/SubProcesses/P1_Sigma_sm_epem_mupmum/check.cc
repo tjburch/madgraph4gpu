@@ -1,11 +1,14 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
 #include <numeric>
+#include <omp.h>
 #include <string>
 #include <unistd.h>
 
@@ -38,7 +41,11 @@ int usage(char* argv0, int ret = 1) {
   std::cout << "The number of events per iteration is #gpuBlocksPerGrid * #gpuThreadsPerBlock" << std::endl;
   std::cout << "(also in CPU/C++ code, where only the product of these two parameters counts)" << std::endl << std::endl;
   std::cout << "Summary stats are always computed: '-p' and '-j' only control their printout" << std::endl;
-  std::cout << "The '-d' flag only controls if nan's emit warnings" << std::endl;
+  std::cout << "The '-d' flag only enables nan warnings and OMP debugging" << std::endl;
+#ifndef __CUDACC__
+  std::cout << std::endl << "Use the OMP_NUM_THREADS environment variable to control OMP multi-threading" << std::endl;
+  std::cout << "(OMP multithreading will be disabled if OMP_NUM_THREADS is not set)" << std::endl;
+#endif
   return ret;
 }
 
@@ -69,7 +76,7 @@ std::unique_ptr<T[], CudaHstDeleter<T>> hstMakeUnique(std::size_t N) {
 };
 #else
 template<typename T = fptype>
-std::unique_ptr<T[]> hstMakeUnique(std::size_t N) { return std::unique_ptr<T[]>{ new T[N] }; };
+std::unique_ptr<T[]> hstMakeUnique(std::size_t N) { return std::unique_ptr<T[]>{ new T[N]() }; };
 #endif
 
 int main(int argc, char **argv)
@@ -142,6 +149,25 @@ int main(int argc, char **argv)
     std::cout << "ERROR! #threads/block should be <= " << ntpbMAX << std::endl;
     return usage(argv[0]);
   }
+
+#ifndef __CUDACC__
+  // Set OMP_NUM_THREADS equal to 1 if it is not yet set
+  char* ompnthr = getenv( "OMP_NUM_THREADS" );
+  if ( debug )
+  {
+    std::cout << "DEBUG: omp_get_num_threads() = " << omp_get_num_threads() << std::endl; // always == 1 here!
+    std::cout << "DEBUG: omp_get_max_threads() = " << omp_get_max_threads() << std::endl;
+    std::cout << "DEBUG: ${OMP_NUM_THREADS}    = '" << ( ompnthr == 0 ? "[not set]" : ompnthr ) << "'" << std::endl;
+  }
+  if ( ompnthr == NULL || std::string(ompnthr).find_first_not_of("0123456789") != std::string::npos || atol( ompnthr ) == 0 )
+  {
+    if ( ompnthr != NULL ) std::cout << "WARNING! OMP_NUM_THREADS is invalid: will use only 1 thread" << std::endl;
+    else if ( debug ) std::cout << "DEBUG: OMP_NUM_THREADS is not set: will use only 1 thread" << std::endl;
+    omp_set_num_threads( 1 ); // https://stackoverflow.com/a/22816325
+    if ( debug ) std::cout << "DEBUG: omp_get_num_threads() = " << omp_get_num_threads() << std::endl; // always == 1 here!
+    if ( debug ) std::cout << "DEBUG: omp_get_max_threads() = " << omp_get_max_threads() << std::endl;
+  }
+#endif
 
   const int ndim = gpublocks * gputhreads; // number of threads in one GPU grid
   const int nevt = ndim; // number of events in one iteration == number of GPU threads
@@ -285,10 +311,10 @@ int main(int argc, char **argv)
     const std::string rngnKey = "1b GenRnGen";
     timermap.start( rngnKey );
 #ifdef MGONGPU_COMMONRAND_ONHOST
-    std::vector<double> commonRnd = commonRandomPromises[iiter].get_future().get();
+    std::vector<fptype> commonRnd = commonRandomPromises[iiter].get_future().get();
     assert( nRnarray == static_cast<int>( commonRnd.size() ) );
     // NB (PR #45): memcpy is strictly needed only in CUDA (copy to pinned memory), but keep it also in C++ for consistency
-    memcpy( hstRnarray, commonRandomNumbers.data(), nbytesRnarray );
+    memcpy( hstRnarray.get(), commonRnd.data(), nRnarray * sizeof(fptype) );
 #elif defined __CUDACC__
 #ifdef MGONGPU_CURAND_ONDEVICE
     grambo2toNm0::generateRnarray( rnGen, devRnarray.get(), nevt );
@@ -502,7 +528,7 @@ int main(int argc, char **argv)
     maxwtim = std::max( maxwtim, wavetimes[iiter] );
   }
   double meanwtim = sumwtim / niter;
-  double stdwtim = std::sqrt( sqswtim / niter - meanwtim * meanwtim );
+  //double stdwtim = std::sqrt( sqswtim / niter - meanwtim * meanwtim );
 
   int nnan = 0;
   double minelem = matrixelementALL[0];
@@ -570,87 +596,97 @@ int main(int argc, char **argv)
 
   if (perf)
   {
+#ifndef __CUDACC__
+    // Get the output of "nproc --all" (https://stackoverflow.com/a/478960)
+    std::string nprocall;
+    std::array<char, 128> nprocbuf;
+    std::unique_ptr<FILE, decltype(&pclose)> nprocpipe( popen( "nproc --all", "r" ), pclose );
+    if ( !nprocpipe ) throw std::runtime_error("`nproc --all` failed?");
+    while ( fgets( nprocbuf.data(), nprocbuf.size(), nprocpipe.get()) != nullptr ) nprocall += nprocbuf.data();
+#endif
+    // Dump all configuration parameters and all results
     std::cout << "***********************************************************************" << std::endl
-              << "NumBlocksPerGrid           = " << gpublocks << std::endl
-              << "NumThreadsPerBlock         = " << gputhreads << std::endl
-              << "NumIterations              = " << niter << std::endl
+              << "NumBlocksPerGrid            = " << gpublocks << std::endl
+              << "NumThreadsPerBlock          = " << gputhreads << std::endl
+              << "NumIterations               = " << niter << std::endl
               << "-----------------------------------------------------------------------" << std::endl
 #if defined MGONGPU_FPTYPE_DOUBLE
-              << "FP precision               = DOUBLE (nan=" << nnan << ")" << std::endl
+              << "FP precision                = DOUBLE (nan=" << nnan << ")" << std::endl
 #elif defined MGONGPU_FPTYPE_FLOAT
-              << "FP precision               = FLOAT (nan=" << nnan << ")" << std::endl
+              << "FP precision                = FLOAT (nan=" << nnan << ")" << std::endl
 #endif
 #ifdef __CUDACC__
 #if defined MGONGPU_CXTYPE_CUCOMPLEX
-              << "Complex type               = CUCOMPLEX" << std::endl
+              << "Complex type                = CUCOMPLEX" << std::endl
 #elif defined MGONGPU_CXTYPE_THRUST
-              << "Complex type               = THRUST::COMPLEX" << std::endl
+              << "Complex type                = THRUST::COMPLEX" << std::endl
 #endif
 #else
-              << "Complex type               = STD::COMPLEX" << std::endl
+              << "Complex type                = STD::COMPLEX" << std::endl
 #endif
-              << "RanNumb memory layout      = AOSOA[" << neppR << "]"
+              << "RanNumb memory layout       = AOSOA[" << neppR << "]"
               << ( neppR == 1 ? " == AOS" : "" ) << std::endl
-              << "Momenta memory layout      = AOSOA[" << neppM << "]"
+              << "Momenta memory layout       = AOSOA[" << neppM << "]"
               << ( neppM == 1 ? " == AOS" : "" ) << std::endl
 #ifdef __CUDACC__
-              << "Wavefunction GPU memory    = LOCAL" << std::endl
+              << "Wavefunction GPU memory     = LOCAL" << std::endl
 #endif
 #ifdef __CUDACC__
 #if defined MGONGPU_COMMONRAND_ONHOST
-              << "Random number generation   = COMMON RANDOM HOST (CUDA code)" << std::endl
+              << "Random number generation    = COMMON RANDOM HOST (CUDA code)" << std::endl
 #elif defined MGONGPU_CURAND_ONDEVICE
-              << "Random number generation   = CURAND DEVICE (CUDA code)" << std::endl
+              << "Random number generation    = CURAND DEVICE (CUDA code)" << std::endl
 #elif defined MGONGPU_CURAND_ONHOST
-              << "Random number generation   = CURAND HOST (CUDA code)" << std::endl
+              << "Random number generation    = CURAND HOST (CUDA code)" << std::endl
 #endif
 #else
 #if defined MGONGPU_COMMONRAND_ONHOST
-              << "Random number generation   = COMMON RANDOM (C++ code)" << std::endl
+              << "Random number generation    = COMMON RANDOM (C++ code)" << std::endl
 #else
-              << "Random number generation   = CURAND (C++ code)" << std::endl
+              << "Random number generation    = CURAND (C++ code)" << std::endl
 #endif
+              << "OMP threads / `nproc --all` = " << omp_get_max_threads() << " / " << nprocall // includes a newline
 #endif
               << "-----------------------------------------------------------------------" << std::endl
-              << "NumberOfEntries            = " << niter << std::endl
+              << "NumberOfEntries             = " << niter << std::endl
               << std::scientific // fixed format: affects all floats (default precision: 6)
-              << "TotalTime[Rnd+Rmb+ME] (123)= ( " << sumgtim+sumrtim+sumwtim << std::string(16, ' ') << " )  sec" << std::endl
-              << "TotalTime[Rambo+ME]    (23)= ( " << sumrtim+sumwtim << std::string(16, ' ') << " )  sec" << std::endl
-              << "TotalTime[RndNumGen]    (1)= ( " << sumgtim << std::string(16, ' ') << " )  sec" << std::endl
-              << "TotalTime[Rambo]        (2)= ( " << sumrtim << std::string(16, ' ') << " )  sec" << std::endl
-              << "TotalTime[MatrixElems]  (3)= ( " << sumwtim << std::string(16, ' ') << " )  sec" << std::endl
-              << "MeanTimeInMatrixElems      = ( " << meanwtim << std::string(16, ' ') << " )  sec" << std::endl
-              << "[Min,Max]TimeInMatrixElems = [ " << minwtim
+              << "TotalTime[Rnd+Rmb+ME] (123) = ( " << sumgtim+sumrtim+sumwtim << std::string(16, ' ') << " )  sec" << std::endl
+              << "TotalTime[Rambo+ME]    (23) = ( " << sumrtim+sumwtim << std::string(16, ' ') << " )  sec" << std::endl
+              << "TotalTime[RndNumGen]    (1) = ( " << sumgtim << std::string(16, ' ') << " )  sec" << std::endl
+              << "TotalTime[Rambo]        (2) = ( " << sumrtim << std::string(16, ' ') << " )  sec" << std::endl
+              << "TotalTime[MatrixElems]  (3) = ( " << sumwtim << std::string(16, ' ') << " )  sec" << std::endl
+              << "MeanTimeInMatrixElems       = ( " << meanwtim << std::string(16, ' ') << " )  sec" << std::endl
+              << "[Min,Max]TimeInMatrixElems  = [ " << minwtim
               << " ,  " << maxwtim << " ]  sec" << std::endl
-      //<< "StdDevTimeInWaveFuncs      = ( " << stdwtim << std::string(16, ' ') << " )  sec" << std::endl
+      //<< "StdDevTimeInWaveFuncs       = ( " << stdwtim << std::string(16, ' ') << " )  sec" << std::endl
               << "-----------------------------------------------------------------------" << std::endl
-      //<< "ProcessID:                 = " << getpid() << std::endl
-      //<< "NProcesses                 = " << process.nprocesses << std::endl
-              << "TotalEventsComputed        = " << nevtALL << std::endl
-              << "EvtsPerSec[Rnd+Rmb+ME](123)= ( " << nevtALL/(sumgtim+sumrtim+sumwtim)
+      //<< "ProcessID:                  = " << getpid() << std::endl
+      //<< "NProcesses                  = " << process.nprocesses << std::endl
+              << "TotalEventsComputed         = " << nevtALL << std::endl
+              << "EvtsPerSec[Rnd+Rmb+ME](123) = ( " << nevtALL/(sumgtim+sumrtim+sumwtim)
               << std::string(16, ' ') << " )  sec^-1" << std::endl
-              << "EvtsPerSec[Rmb+ME]     (23)= ( " << nevtALL/(sumrtim+sumwtim)
+              << "EvtsPerSec[Rmb+ME]     (23) = ( " << nevtALL/(sumrtim+sumwtim)
               << std::string(16, ' ') << " )  sec^-1" << std::endl
-      //<< "EvtsPerSec[RndNumbGen]   (1)= ( " << nevtALL/sumgtim
+      //<< "EvtsPerSec[RndNumbGen]   (1) = ( " << nevtALL/sumgtim
       //<< std::string(16, ' ') << " )  sec^-1" << std::endl
-      //<< "EvtsPerSec[Rambo]        (2)= ( " << nevtALL/sumrtim
+      //<< "EvtsPerSec[Rambo]        (2) = ( " << nevtALL/sumrtim
       //<< std::string(16, ' ') << " )  sec^-1" << std::endl
-              << "EvtsPerSec[MatrixElems] (3)= ( " << nevtALL/sumwtim
+              << "EvtsPerSec[MatrixElems] (3) = ( " << nevtALL/sumwtim
               << std::string(16, ' ') << " )  sec^-1" << std::endl
               << std::defaultfloat; // default format: affects all floats
     std::cout << "***********************************************************************" << std::endl
-              << "NumMatrixElements(notNan)  = " << nevtALL - nnan << std::endl
+              << "NumMatrixElements(notNan)   = " << nevtALL - nnan << std::endl
               << std::scientific // fixed format: affects all floats (default precision: 6)
-              << "MeanMatrixElemValue        = ( " << meanelem
+              << "MeanMatrixElemValue         = ( " << meanelem
               << " +- " << stdelem/sqrt(nevtALL - nnan) << " )  GeV^" << meGeVexponent << std::endl // standard error
-              << "[Min,Max]MatrixElemValue   = [ " << minelem
+              << "[Min,Max]MatrixElemValue    = [ " << minelem
               << " ,  " << maxelem << " ]  GeV^" << meGeVexponent << std::endl
-              << "StdDevMatrixElemValue      = ( " << stdelem << std::string(16, ' ') << " )  GeV^" << meGeVexponent << std::endl
-              << "MeanWeight                 = ( " << meanweig
+              << "StdDevMatrixElemValue       = ( " << stdelem << std::string(16, ' ') << " )  GeV^" << meGeVexponent << std::endl
+              << "MeanWeight                  = ( " << meanweig
               << " +- " << stdweig/sqrt(nevtALL - nnan) << " )" << std::endl // standard error
-              << "[Min,Max]Weight            = [ " << minweig
+              << "[Min,Max]Weight             = [ " << minweig
               << " ,  " << maxweig << " ]" << std::endl
-              << "StdDevWeight               = ( " << stdweig << std::string(16, ' ') << " )" << std::endl
+              << "StdDevWeight                = ( " << stdweig << std::string(16, ' ') << " )" << std::endl
               << std::defaultfloat; // default format: affects all floats
   }
 
@@ -714,33 +750,52 @@ int main(int argc, char **argv)
 #endif
              << "\"Curand generation\": "
 #ifdef __CUDACC__
-#if defined MGONGPU_CURAND_ONDEVICE
-             << "\"DEVICE (CUDA code)\"," << std::endl
+#if defined MGONGPU_COMMONRAND_ONHOST
+             << "\"COMMON RANDOM HOST (CUDA code)\"," << std::endl
+#elif defined MGONGPU_CURAND_ONDEVICE
+             << "\"CURAND DEVICE (CUDA code)\"," << std::endl
 #elif defined MGONGPU_CURAND_ONHOST
-             << "\"HOST (CUDA code)\"," << std::endl
+             << "\"CURAND HOST (CUDA code)\"," << std::endl
 #endif
 #else
-             << "\"HOST (C++ code)\"," << std::endl
+#if defined MGONGPU_COMMONRAND_ONHOST
+             << "\"COMMON RANDOM (C++ code)\"," << std::endl
+#else
+             << "\"CURAND (C++ code)\"," << std::endl
+#endif
 #endif
              << "\"NumberOfEntries\": " << niter << "," << std::endl
       //<< std::scientific // Not sure about this
-             << "\"TotalTimeInWaveFuncs\": "
-             << "\"" << std::to_string(sumwtim) << " sec\"," << std::endl
-             << "\"MeanTimeInWaveFuncs\": "
-             << "\"" << std::to_string(meanwtim) << " sec\"," << std::endl
-             << "\"StdDevTimeInWaveFuncs\": "
-             << "\"" << std::to_string(stdwtim) << " sec\"," << std::endl
-             << "\"MinTimeInWaveFuncs\": "
-             << "\"" << std::to_string(minwtim) << " sec\"," << std::endl
-             << "\"MaxTimeInWaveFuncs\": "
-             << "\"" << std::to_string(maxwtim) << " sec\"," << std::endl
+
+             << "\"TotalTime[Rnd+Rmb+ME] (123)\": \""
+             << std::to_string(sumgtim+sumrtim+sumwtim) << " sec\","
+             << std::endl
+             << "\"TotalTime[Rambo+ME] (23)\": \""
+             << std::to_string(sumrtim+sumwtim) << " sec\"," << std::endl
+             << "\"TotalTime[RndNumGen] (1)\": \""
+             << std::to_string(sumgtim) << " sec\"," << std::endl
+             << "\"TotalTime[Rambo] (2)\": \""
+             << std::to_string(sumrtim) << " sec\"," << std::endl
+             << "\"TotalTime[MatrixElems] (3)\": \""
+             << std::to_string(sumwtim) << " sec\"," << std::endl
+             << "\"MeanTimeInMatrixElems\": \""
+             << std::to_string(meanwtim) << " sec\"," << std::endl
+             << "\"MinTimeInMatrixElems\": \""
+             << std::to_string(minwtim) << " sec\"," << std::endl
+             << "\"MaxTimeInMatrixElems\": \""
+             << std::to_string(maxwtim) << " sec\"," << std::endl
       //<< "ProcessID:                = " << getpid() << std::endl
       //<< "NProcesses                = " << process.nprocesses << std::endl
              << "\"TotalEventsComputed\": " << nevtALL << "," << std::endl
-             << "\"RamboEventsPerSec\": "
-             << "\"" << std::to_string(nevtALL/sumrtim) << " sec^-1\"," << std::endl
-             << "\"MatrixElemEventsPerSec\": "
-             << "\"" << std::to_string(nevtALL/sumwtim) << " sec^-1\"," << std::endl
+
+             << "\"EvtsPerSec[Rnd+Rmb+ME](123)\": \""
+             << std::to_string(nevtALL/(sumgtim+sumrtim+sumwtim))
+             << " sec^-1\"," << std::endl
+             << "\"EvtsPerSec[Rmb+ME] (23)\": \""
+             << std::to_string(nevtALL/(sumrtim+sumwtim)) << " sec^-1\","
+             << std::endl
+             << "\"EvtsPerSec[MatrixElems] (3)\": \""
+             << std::to_string(nevtALL/sumwtim) << " sec^-1\"," << std::endl
              << "\"NumMatrixElements(notNan)\": " << nevtALL - nnan << "," << std::endl
              << std::scientific
              << "\"MeanMatrixElemValue\": "
@@ -775,4 +830,5 @@ int main(int argc, char **argv)
   }
 
   //std::cout << "ALL OK" << std::endl;
+  return 0;
 }

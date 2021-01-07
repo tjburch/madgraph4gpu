@@ -41,7 +41,6 @@ int usage(char* argv0, int ret = 1) {
 }
 
 int main(int argc, char **argv) {
-  printf("here\n");
   bool verbose = false, debug = false, perf = false;
   int numiter = 0, gpublocks = 1, gputhreads = 1;
   std::vector<int> numvec;
@@ -88,7 +87,6 @@ int main(int argc, char **argv) {
     process.initProc("../../Cards/param_card.dat");
 
     double energy = 1500;
-    double weight;
 
     int meGeVexponent = -(2 * process.nexternal - 8);
 
@@ -104,9 +102,11 @@ int main(int argc, char **argv) {
     std::vector<double> matrixelementvector;
     
     for (int x = 0; x < numiter; ++x) {
+      Kokkos::View<double*,Kokkos::DefaultExecutionSpace> d_wgt("d_wgt",dim);
+      auto h_wgt = Kokkos::create_mirror_view(d_wgt);
       // printf("iter %d of %d\n",x,numiter);
       // Get phase space point
-      auto p = get_momenta(process.ninitial, process.nexternal, energy, process.cmME, weight, dim);
+      auto p = get_momenta(process.ninitial, process.nexternal, energy, process.cmME, d_wgt, dim);
 
       // Set momenta for this event
       // for (int d = 0; d < dim; ++d) {
