@@ -3,7 +3,6 @@
 
 #ifdef SYCL_LANGUAGE_VERSION
 #include <CL/sycl.hpp>
-#include <mkl_rng_sycl.hpp>
 #endif
 #include "mgOnGpuConfig.h"
 #include "mgOnGpuTypes.h"

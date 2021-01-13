@@ -8,7 +8,6 @@
 #ifdef SYCL_LANGUAGE_VERSION
 #include <CL/sycl.hpp>
 #endif
-#include <dpct/dpct.hpp>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
@@ -352,7 +351,7 @@ void vxxxxx(const fptype *allmomenta, const fptype &vmass, const int &nhel,
       {
         vc[3] = cxtype(-hel * sqh, 0.0);
         vc[4] =
-            cxtype(0.0, nsvahl * (p3 < 0) ? -sycl::fabs(sqh) : sycl::fabs(sqh));
+	        cxtype(0.0, (nsvahl * (p3 < 0)) ? -sycl::fabs(sqh) : sycl::fabs(sqh));
       }
     }
   }
@@ -371,7 +370,7 @@ void vxxxxx(const fptype *allmomenta, const fptype &vmass, const int &nhel,
     else
     {
       vc[3] = cxtype(-hel * sqh, 0.0);
-      vc[4] = cxtype(0.0, nsv * (p3 < 0) ? -sycl::fabs(sqh) : sycl::fabs(sqh));
+      vc[4] = cxtype(0.0, (nsv * (p3 < 0)) ? -sycl::fabs(sqh) : sycl::fabs(sqh));
     }
   }
   return; 
