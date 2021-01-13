@@ -1,0 +1,2 @@
+- `src/rambo.h dependency on curand should be removed (or at least correctly covered by precompiler commands)
+- CPPProcess namespace shadowing in variables leads to compiliation errors (cIPC and cIPD need to be const)
