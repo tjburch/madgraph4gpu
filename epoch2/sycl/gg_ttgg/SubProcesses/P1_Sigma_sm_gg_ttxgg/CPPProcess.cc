@@ -1324,6 +1324,8 @@ void sigmaKin(const fptype * allmomenta,
               fptype * allMEs,
               sycl::nd_item<3> item_ct1,
               sycl::accessor<int, 2, sycl::access::mode::read_write> cHel,
+              fptype *cIPC,
+              fptype *cIPD,
               int *cNGoodHel,
               int *cGoodHel               
 #ifndef SYCL_LANGUAGE_VERSION
